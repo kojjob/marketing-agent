@@ -1,0 +1,67 @@
+#!/bin/bash
+# Setup script for Marketing Agent
+# Creates necessary directories and copies default templates
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+USER_DIR="$HOME/.marketing_agent"
+
+echo "=== Marketing Agent Setup ==="
+echo ""
+
+# Create user directory
+echo "→ Creating user directory at $USER_DIR..."
+mkdir -p "$USER_DIR"
+mkdir -p "$USER_DIR/templates"
+
+# Copy templates
+if [ -d "$PROJECT_DIR/priv/templates" ]; then
+    echo "→ Copying default templates..."
+    cp -r "$PROJECT_DIR/priv/templates/"* "$USER_DIR/templates/" 2>/dev/null || true
+fi
+
+# Create default .env file if it doesn't exist
+if [ ! -f "$USER_DIR/.env" ]; then
+    echo "→ Creating default .env file..."
+    cat > "$USER_DIR/.env" << 'EOF'
+# Marketing Agent Configuration
+# Fill in your API keys and settings
+
+# SendGrid API Key (required for sending emails)
+# Get one at: https://sendgrid.com/
+#SENDGRID_API_KEY=SG.xxxxxxxxxxxxxxxxxxxx
+
+# Apollo.io API Key (required for contact enrichment)
+# Get one at: https://www.apollo.io/
+#APOLLO_API_KEY=xxxxxxxxxxxxxxxxxxxx
+
+# Email configuration (use quotes for values with spaces)
+FROM_EMAIL="hello@example.com"
+FROM_NAME="Marketing Team"
+#REPLY_TO="replies@example.com"
+UNSUBSCRIBE_URL="https://example.com/unsubscribe"
+COMPANY_ADDRESS="123 Main St, City, State 12345"
+
+# Optional: Override database location
+#DATABASE_PATH="/custom/path/to/marketing_agent.db"
+
+# Optional: Override templates location
+#TEMPLATES_DIR="/custom/path/to/templates"
+EOF
+fi
+
+echo ""
+echo "✓ Setup complete!"
+echo ""
+echo "Directory structure:"
+echo "  $USER_DIR/"
+echo "  ├── marketing_agent.db    (will be created on first run)"
+echo "  ├── templates/            (email templates)"
+echo "  └── .env                  (configuration - edit this!)"
+echo ""
+echo "Next steps:"
+echo "  1. Edit $USER_DIR/.env with your API keys"
+echo "  2. Run: marketing help"
+echo ""

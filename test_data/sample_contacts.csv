@@ -1,0 +1,6 @@
+Company,First Name,Last Name,Email,Title,Phone,LinkedIn,Website,Segment,Notes
+Acme Corp,John,Doe,john@acmecorp.com,VP Engineering,+1-555-1234,https://linkedin.com/in/johndoe,https://acmecorp.com,enterprise,Met at tech conference
+TechStart Inc,Jane,Smith,jane@techstart.io,CTO,,https://linkedin.com/in/janesmith,https://techstart.io,startup,Interested in RTB
+DataFlow Systems,Bob,Wilson,bob@dataflow.com,Director of Product,+1-555-5678,,https://dataflow.com,enterprise,Referred by John Doe
+CloudScale,Alice,Johnson,alice@cloudscale.io,Head of Growth,,,https://cloudscale.io,growth,Found via LinkedIn
+MediaBuy Pro,Chris,Brown,chris@mediabuy.pro,CEO,+1-555-9999,https://linkedin.com/in/chrisbrown,https://mediabuy.pro,agency,DSP customer

@@ -1,0 +1,36 @@
+#!/bin/bash
+# Install script for Marketing Agent CLI
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
+
+cd "$PROJECT_DIR"
+
+echo "=== Marketing Agent Installation ==="
+echo ""
+
+# Build first if needed
+if [ ! -f "$PROJECT_DIR/marketing" ]; then
+    echo "→ Building escript first..."
+    "$SCRIPT_DIR/build"
+fi
+
+# Check if we can write to install directory
+if [ -w "$INSTALL_DIR" ]; then
+    cp "$PROJECT_DIR/marketing" "$INSTALL_DIR/marketing"
+    echo "✓ Installed to $INSTALL_DIR/marketing"
+else
+    echo "→ Installing to $INSTALL_DIR (requires sudo)..."
+    sudo cp "$PROJECT_DIR/marketing" "$INSTALL_DIR/marketing"
+    echo "✓ Installed to $INSTALL_DIR/marketing"
+fi
+
+echo ""
+echo "You can now run 'marketing' from anywhere!"
+echo ""
+echo "Try:"
+echo "  marketing help"
+echo "  marketing stats"

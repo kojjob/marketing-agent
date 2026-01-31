@@ -1,0 +1,47 @@
+#!/bin/bash
+# Build script for Marketing Agent CLI
+#
+# Note: Because SQLite uses NIFs (native code), we can't create a pure escript.
+# Instead, this script sets up the project for CLI usage via a wrapper script.
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+cd "$PROJECT_DIR"
+
+echo "=== Marketing Agent Build Script ==="
+echo ""
+
+# Check for dependencies
+echo "→ Checking dependencies..."
+mix deps.get --quiet
+
+# Compile the project
+echo "→ Compiling (production mode)..."
+MIX_ENV=prod mix compile --quiet
+
+# Setup user directory
+echo "→ Setting up user directory..."
+"$SCRIPT_DIR/setup"
+
+echo ""
+echo "✓ Build complete!"
+echo ""
+echo "=== Usage Options ==="
+echo ""
+echo "Option 1: Run from project directory"
+echo "  cd $PROJECT_DIR"
+echo "  bin/marketing help"
+echo ""
+echo "Option 2: Add to PATH (recommended)"
+echo "  Add this line to your ~/.bashrc or ~/.zshrc:"
+echo "  export PATH=\"\$PATH:$PROJECT_DIR/bin\""
+echo ""
+echo "  Then run from anywhere:"
+echo "  marketing help"
+echo ""
+echo "Option 3: Create a symlink"
+echo "  sudo ln -sf $PROJECT_DIR/bin/marketing /usr/local/bin/marketing"
+echo ""

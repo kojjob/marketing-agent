@@ -1,0 +1,24 @@
+#!/bin/bash
+# Marketing Agent CLI
+# Wrapper script that runs the Elixir CLI
+
+# Find the project directory (where this script lives)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Load user environment if available
+USER_ENV="$HOME/.marketing_agent/.env"
+if [ -f "$USER_ENV" ]; then
+    set -a
+    source "$USER_ENV" 2>/dev/null
+    set +a
+fi
+
+# Change to project directory and run the CLI
+cd "$PROJECT_DIR"
+
+# Use MIX_ENV=prod for performance and cleaner output
+export MIX_ENV=prod
+
+# Run CLI with log level set to info to suppress debug messages
+exec mix run --no-compile -e "Logger.configure(level: :info); MarketingAgent.CLI.main(System.argv())" -- "$@"
