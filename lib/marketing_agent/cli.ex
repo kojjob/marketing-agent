@@ -7,6 +7,7 @@ defmodule MarketingAgent.CLI do
   alias MarketingAgent.Services.Apollo
   alias MarketingAgent.Workflows.{Enrichment, Outreach, Followup}
   alias MarketingAgent.AI.Personalization
+  alias MarketingAgent.Email.SendGrid
 
   def main(args) do
     # Load environment variables from user config
@@ -385,6 +386,162 @@ defmodule MarketingAgent.CLI do
     end
   end
 
+  # --- SendGrid Email ---
+  defp run({["email-status"], _opts}) do
+    IO.puts("\n=== SendGrid Email Status ===\n")
+
+    status = SendGrid.status()
+
+    if status.configured do
+      IO.puts("  Status: ✓ Configured")
+      IO.puts("  From: #{status.from_name} <#{status.from_email}>")
+      IO.puts("  Daily Limit: #{status.daily_limit}")
+      IO.puts("  API Key: #{if status.api_key_set, do: "✓ Set", else: "✗ Not set"}")
+    else
+      IO.puts("  Status: ✗ Not configured")
+      IO.puts("\n  To configure SendGrid, set environment variables:")
+      IO.puts("    SENDGRID_API_KEY=your-api-key")
+      IO.puts("    SENDGRID_FROM_EMAIL=sender@yourdomain.com")
+      IO.puts("    SENDGRID_FROM_NAME=\"Your Name\"")
+      IO.puts("\n  Add these to ~/.marketing_agent/.env")
+    end
+  end
+
+  defp run({["send-email", contact_id], opts}) do
+    template = opts[:template] || "cold-email-1"
+    dry_run = opts[:dry_run] || false
+
+    IO.puts("\n=== Send Email ===\n")
+
+    case SendGrid.send_email(contact_id, template, dry_run: dry_run) do
+      {:ok, result} ->
+        if dry_run do
+          IO.puts("  Mode: DRY RUN (no email sent)")
+        else
+          IO.puts("  Status: ✓ Email sent!")
+        end
+        IO.puts("  To: #{result.contact_email}")
+        IO.puts("  Template: #{template}")
+        IO.puts("  Message ID: #{result.message_id}")
+
+      {:error, :not_configured} ->
+        IO.puts("  ✗ SendGrid not configured")
+        IO.puts("  Run: email-status for setup instructions")
+
+      {:error, :no_email} ->
+        IO.puts("  ✗ Contact has no email address")
+
+      {:error, :unsubscribed} ->
+        IO.puts("  ✗ Contact is unsubscribed")
+
+      {:error, :bounced} ->
+        IO.puts("  ✗ Contact email has bounced")
+
+      {:error, :not_found} ->
+        IO.puts("  ✗ Contact not found")
+
+      {:error, reason} ->
+        IO.puts("  ✗ Failed to send: #{inspect(reason)}")
+    end
+  end
+
+  defp run({["send-email-batch"], opts}) do
+    template = opts[:template] || "cold-email-1"
+    segment = opts[:segment]
+    limit = opts[:limit] || 10
+    confirm = opts[:confirm] || false
+    dry_run = opts[:dry_run] || false
+
+    IO.puts("\n=== Batch Email Send ===\n")
+
+    unless SendGrid.configured?() do
+      IO.puts("  ✗ SendGrid not configured")
+      IO.puts("  Run: email-status for setup instructions")
+    else
+      # Count eligible contacts
+      contacts = get_batch_contacts_preview(segment, limit)
+      total = length(contacts)
+
+      IO.puts("  Template: #{template}")
+      IO.puts("  Segment: #{segment || "all"}")
+      IO.puts("  Eligible contacts: #{total}")
+
+      if dry_run do
+        IO.puts("  Mode: DRY RUN")
+      end
+
+      cond do
+        total == 0 ->
+          IO.puts("\n  No eligible contacts found.")
+          IO.puts("  (Contacts must have email and status 'new' or 'enriched')")
+
+        !confirm && !dry_run ->
+          IO.puts("\n  Preview of first 5 contacts:")
+          contacts
+          |> Enum.take(5)
+          |> Enum.each(fn c ->
+            IO.puts("    • #{c.email} (#{c.company})")
+          end)
+
+          IO.puts("\n  To send, run:")
+          IO.puts("    send-email-batch --template #{template}#{if segment, do: " --segment #{segment}", else: ""} --limit #{limit} --confirm")
+          IO.puts("\n  To preview without sending:")
+          IO.puts("    send-email-batch --template #{template}#{if segment, do: " --segment #{segment}", else: ""} --limit #{limit} --dry-run")
+
+        true ->
+          IO.puts("\n  Sending emails...")
+
+          progress_callback = fn current, total ->
+            percent = round(current / total * 100)
+            IO.write("\r  Progress: #{current}/#{total} (#{percent}%)")
+          end
+
+          result = SendGrid.send_batch(template,
+            segment: segment,
+            status: "new",
+            limit: limit,
+            dry_run: dry_run,
+            on_progress: progress_callback
+          )
+
+          {:ok, stats} = result
+
+          IO.puts("\n\n  Results:")
+          IO.puts("    ✓ Sent: #{stats.sent}")
+          IO.puts("    ✗ Failed: #{stats.failed}")
+
+          if length(stats.errors) > 0 do
+            IO.puts("\n  Errors:")
+            Enum.each(stats.errors, fn {id, reason} ->
+              IO.puts("    #{String.slice(id, 0, 8)}: #{inspect(reason)}")
+            end)
+          end
+      end
+    end
+  end
+
+  defp run({["preview-send", contact_id], opts}) do
+    template = opts[:template] || "cold-email-1"
+
+    IO.puts("\n=== Email Preview ===\n")
+
+    case SendGrid.preview_email(contact_id, template) do
+      {:ok, preview} ->
+        IO.puts("To: #{preview.to}")
+        IO.puts("From: #{preview.from}")
+        IO.puts("Subject: #{preview.subject}")
+        IO.puts("\n--- Text Body ---\n")
+        IO.puts(preview.text_body)
+        IO.puts("\n-----------------")
+
+      {:error, :not_found} ->
+        IO.puts("  ✗ Contact not found")
+
+      {:error, reason} ->
+        IO.puts("  ✗ Failed to generate preview: #{inspect(reason)}")
+    end
+  end
+
   # --- AI Personalization ---
   defp run({["ai-status"], _opts}) do
     IO.puts("\n=== AI Provider Status ===\n")
@@ -704,7 +861,53 @@ defmodule MarketingAgent.CLI do
       marketing personalize-batch --segment "q1-outreach" --limit 20
       marketing generate-email abc123 --template cold-outreach
       marketing generate-subjects abc123
+
+    SENDGRID EMAIL:
+      email-status              Check SendGrid configuration
+      send-email <id>           Send email to single contact
+        --template TEMPLATE     Template name (default: cold-email-1)
+        --dry-run               Preview without sending
+      send-email-batch          Send emails to multiple contacts
+        --template TEMPLATE     Template name (default: cold-email-1)
+        --segment SEGMENT       Filter by segment
+        --limit N               Max emails to send (default: 10)
+        --confirm               Required to actually send
+        --dry-run               Simulate sending
+      preview-send <id>         Preview email before sending
+        --template TEMPLATE     Template name (default: cold-email-1)
+
+      Configuration (environment variables):
+        SENDGRID_API_KEY        Your SendGrid API key
+        SENDGRID_FROM_EMAIL     Sender email address
+        SENDGRID_FROM_NAME      Sender display name
+
+    Examples:
+      # Check SendGrid configuration
+      marketing email-status
+
+      # Preview an email
+      marketing preview-send abc123 --template cold-email-1
+
+      # Send to single contact
+      marketing send-email abc123 --template cold-email-1
+
+      # Dry run batch (preview without sending)
+      marketing send-email-batch --segment "tech-companies" --limit 5 --dry-run
+
+      # Send batch
+      marketing send-email-batch --segment "tech-companies" --limit 10 --confirm
     """)
+  end
+
+  defp get_batch_contacts_preview(segment, limit) do
+    Contacts.list_contacts()
+    |> Enum.filter(fn c ->
+      c.email != nil &&
+        c.email != "" &&
+        c.status in ["new", "enriched"] &&
+        (segment == nil || c.segment == segment)
+    end)
+    |> Enum.take(limit)
   end
 
   defp print_contacts_table(contacts) do
