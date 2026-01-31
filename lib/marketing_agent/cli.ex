@@ -6,6 +6,7 @@ defmodule MarketingAgent.CLI do
   alias MarketingAgent.{Contacts, Campaigns, Templates, CsvHandler}
   alias MarketingAgent.Services.Apollo
   alias MarketingAgent.Workflows.{Enrichment, Outreach, Followup}
+  alias MarketingAgent.AI.Personalization
 
   def main(args) do
     # Load environment variables from user config
@@ -66,7 +67,9 @@ defmodule MarketingAgent.CLI do
           output: :string,
           status: :string,
           columns: :string,
-          format: :string
+          format: :string,
+          # AI personalization options
+          tone: :string
         ],
         aliases: [
           h: :help,
@@ -382,6 +385,168 @@ defmodule MarketingAgent.CLI do
     end
   end
 
+  # --- AI Personalization ---
+  defp run({["ai-status"], _opts}) do
+    IO.puts("\n=== AI Provider Status ===\n")
+
+    if Personalization.available?() do
+      provider = Personalization.provider_name()
+      IO.puts("  Status: ✓ Available")
+      IO.puts("  Provider: #{provider}")
+      IO.puts("\n  Configuration via environment variables:")
+      IO.puts("    AI_PROVIDER=#{System.get_env("AI_PROVIDER") || "(not set)"}")
+      IO.puts("    AI_MODEL=#{System.get_env("AI_MODEL") || "(using default)"}")
+      IO.puts("    AI_BASE_URL=#{System.get_env("AI_BASE_URL") || "(using default)"}")
+    else
+      IO.puts("  Status: ✗ Not configured")
+      IO.puts("\n  To enable AI personalization, set environment variables:")
+      IO.puts("    AI_PROVIDER=deepseek|kimi|qwen|claude|gemini|openai|ollama|...")
+      IO.puts("    AI_API_KEY=your-api-key")
+      IO.puts("    AI_MODEL=model-name (optional)")
+      IO.puts("\n  Supported providers:")
+      IO.puts("    Cloud: deepseek, kimi, qwen, claude, gemini, openai, mistral, groq")
+      IO.puts("    Local: ollama, lmstudio, localai, vllm")
+    end
+  end
+
+  defp run({["personalize", id], opts}) do
+    case Contacts.get_contact(id) do
+      nil ->
+        IO.puts("Contact not found")
+
+      contact ->
+        IO.puts("Generating personalized intro for: #{contact.company}")
+
+        tone = opts[:tone] || "professional"
+        case Personalization.generate_intro(contact, tone: tone) do
+          {:ok, intro} ->
+            IO.puts("\n--- Generated Intro ---")
+            IO.puts(intro)
+            IO.puts("\nSave this personalization? [y/N]")
+
+            if confirm?() do
+              Contacts.update_contact(contact, %{personalization: intro})
+              IO.puts("✓ Saved to contact")
+            end
+
+          {:error, :ai_not_configured} ->
+            IO.puts("✗ AI not configured. Run 'ai-status' for setup instructions.")
+
+          {:error, reason} ->
+            IO.puts("✗ Failed to generate: #{inspect(reason)}")
+        end
+    end
+  end
+
+  defp run({["personalize-batch"], opts}) do
+    unless Personalization.available?() do
+      IO.puts("✗ AI not configured. Run 'ai-status' for setup instructions.")
+    else
+      segment = opts[:segment]
+      limit = opts[:limit] || 10
+      confirm = opts[:confirm] || false
+
+      contacts =
+        if segment do
+          Contacts.contacts_by_segment(segment)
+        else
+          Contacts.list_contacts(limit: limit)
+        end
+        |> Enum.filter(&(is_nil(&1.personalization) or &1.personalization == ""))
+        |> Enum.take(limit)
+
+      if length(contacts) == 0 do
+        IO.puts("No contacts found needing personalization.")
+      else
+        IO.puts("Found #{length(contacts)} contacts to personalize")
+        IO.puts("Provider: #{Personalization.provider_name()}")
+        IO.puts("\nThis will use API credits. Continue? [y/N]")
+
+        if confirm or confirm?() do
+          IO.puts("\nGenerating personalizations...")
+
+          progress_fn = fn %{current: current, total: total} ->
+            percent = if total > 0, do: round(current / total * 100), else: 0
+            IO.write("\r  Progress: #{current}/#{total} (#{percent}%)")
+          end
+
+          result = Personalization.personalize_batch(contacts, on_progress: progress_fn)
+
+          IO.puts("\n\n=== Results ===")
+          IO.puts("  ✓ Success: #{result.success}")
+          IO.puts("  ✗ Failed: #{result.failed}")
+
+          # Show sample results
+          if result.success > 0 do
+            IO.puts("\n--- Sample Generated Intros ---")
+            result.results
+            |> Enum.filter(fn {_id, res} -> match?({:ok, _}, res) end)
+            |> Enum.take(3)
+            |> Enum.each(fn {id, {:ok, intro}} ->
+              contact = Contacts.get_contact(id)
+              IO.puts("\n#{contact.company}:")
+              IO.puts("  #{String.slice(intro, 0, 150)}...")
+            end)
+          end
+        else
+          IO.puts("Cancelled")
+        end
+      end
+    end
+  end
+
+  defp run({["generate-email", id], opts}) do
+    case Contacts.get_contact(id) do
+      nil ->
+        IO.puts("Contact not found")
+
+      contact ->
+        IO.puts("Generating personalized email for: #{contact.company}")
+
+        template = opts[:template] || "cold-outreach"
+        tone = opts[:tone] || "professional"
+
+        case Personalization.generate_email(contact, template: template, tone: tone) do
+          {:ok, email} ->
+            IO.puts("\n--- Generated Email ---")
+            IO.puts(email)
+
+          {:error, :ai_not_configured} ->
+            IO.puts("✗ AI not configured. Run 'ai-status' for setup instructions.")
+
+          {:error, reason} ->
+            IO.puts("✗ Failed to generate: #{inspect(reason)}")
+        end
+    end
+  end
+
+  defp run({["generate-subjects", id], opts}) do
+    case Contacts.get_contact(id) do
+      nil ->
+        IO.puts("Contact not found")
+
+      contact ->
+        IO.puts("Generating subject lines for: #{contact.company}")
+
+        template = opts[:template] || "cold-outreach"
+
+        case Personalization.generate_subject_lines(contact, template: template) do
+          {:ok, subjects} ->
+            IO.puts("\n--- Subject Line Options ---")
+            Enum.with_index(subjects, 1)
+            |> Enum.each(fn {subject, idx} ->
+              IO.puts("  #{idx}. #{subject}")
+            end)
+
+          {:error, :ai_not_configured} ->
+            IO.puts("✗ AI not configured. Run 'ai-status' for setup instructions.")
+
+          {:error, reason} ->
+            IO.puts("✗ Failed to generate: #{inspect(reason)}")
+        end
+    end
+  end
+
   # --- Stats ---
   defp run({["stats"], _opts}) do
     contact_stats = Contacts.count_by_status()
@@ -493,6 +658,29 @@ defmodule MarketingAgent.CLI do
       stats                     Show overall statistics
       report --campaign ID      Show campaign report
 
+    AI PERSONALIZATION:
+      ai-status                 Check AI provider status
+      personalize <id>          Generate personalized intro for contact
+        --tone TONE             Tone: professional, casual, friendly
+      personalize-batch         Batch personalize contacts
+        --segment SEGMENT       Filter by segment
+        --limit N               Limit to N contacts
+        --confirm               Skip confirmation prompt
+      generate-email <id>       Generate full personalized email
+        --template TEMPLATE     Email type: cold-outreach, follow-up, demo-request
+        --tone TONE             Tone: professional, casual, friendly
+      generate-subjects <id>    Generate subject line variations
+
+      Supported AI Providers:
+        Cloud: deepseek, kimi, qwen, claude, gemini, openai, mistral, groq
+        Local: ollama, lmstudio, localai, vllm
+
+      Configuration (environment variables):
+        AI_PROVIDER=deepseek    Provider name
+        AI_API_KEY=sk-xxx       API key (not needed for local)
+        AI_MODEL=model-name     Model override (optional)
+        AI_BASE_URL=url         Custom API URL (optional)
+
     Examples:
       # Import contacts
       marketing import prospects.csv --segment "tech-companies"
@@ -509,6 +697,13 @@ defmodule MarketingAgent.CLI do
       marketing create-campaign --template cold-email-1 --segment "q1-outreach"
       marketing preview --campaign 1
       marketing send --campaign 1 --confirm
+
+      # AI Personalization (set AI_PROVIDER and AI_API_KEY first)
+      marketing ai-status
+      marketing personalize abc123 --tone friendly
+      marketing personalize-batch --segment "q1-outreach" --limit 20
+      marketing generate-email abc123 --template cold-outreach
+      marketing generate-subjects abc123
     """)
   end
 
