@@ -20,6 +20,13 @@ if sendgrid_key = System.get_env("SENDGRID_API_KEY") do
   config :marketing_agent, MarketingAgent.Mailer,
     adapter: Swoosh.Adapters.SendGrid,
     api_key: sendgrid_key
+else
+  # No SendGrid configured - use Local adapter for testing
+  # Emails will be captured and can be viewed in the mailbox
+  config :marketing_agent, MarketingAgent.Mailer,
+    adapter: Swoosh.Adapters.Local
+
+  config :swoosh, :api_client, false
 end
 
 if apollo_key = System.get_env("APOLLO_API_KEY") do

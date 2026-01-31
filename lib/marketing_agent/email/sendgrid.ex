@@ -24,11 +24,20 @@ defmodule MarketingAgent.Email.SendGrid do
   # ============================================================================
 
   @doc """
-  Check if SendGrid is configured and ready.
+  Check if email sending is configured and ready.
+  Returns true if SendGrid is configured OR if running in local test mode.
   """
   def configured? do
-    api_key() != nil && api_key() != "" &&
-      from_email() != nil && from_email() != ""
+    test_mode?() || (api_key() != nil && api_key() != "" &&
+      from_email() != nil && from_email() != "")
+  end
+
+  @doc """
+  Check if running in local test mode (no real emails sent).
+  """
+  def test_mode? do
+    mailer_config = Application.get_env(:marketing_agent, MarketingAgent.Mailer, [])
+    mailer_config[:adapter] == Swoosh.Adapters.Local
   end
 
   @doc """
@@ -37,6 +46,7 @@ defmodule MarketingAgent.Email.SendGrid do
   def status do
     %{
       configured: configured?(),
+      test_mode: test_mode?(),
       from_email: from_email(),
       from_name: from_name(),
       daily_limit: @daily_limit,

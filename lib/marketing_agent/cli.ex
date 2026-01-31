@@ -388,22 +388,34 @@ defmodule MarketingAgent.CLI do
 
   # --- SendGrid Email ---
   defp run({["email-status"], _opts}) do
-    IO.puts("\n=== SendGrid Email Status ===\n")
+    IO.puts("\n=== Email Status ===\n")
 
     status = SendGrid.status()
 
-    if status.configured do
-      IO.puts("  Status: ✓ Configured")
-      IO.puts("  From: #{status.from_name} <#{status.from_email}>")
-      IO.puts("  Daily Limit: #{status.daily_limit}")
-      IO.puts("  API Key: #{if status.api_key_set, do: "✓ Set", else: "✗ Not set"}")
-    else
-      IO.puts("  Status: ✗ Not configured")
-      IO.puts("\n  To configure SendGrid, set environment variables:")
-      IO.puts("    SENDGRID_API_KEY=your-api-key")
-      IO.puts("    SENDGRID_FROM_EMAIL=sender@yourdomain.com")
-      IO.puts("    SENDGRID_FROM_NAME=\"Your Name\"")
-      IO.puts("\n  Add these to ~/.marketing_agent/.env")
+    cond do
+      status.test_mode ->
+        IO.puts("  Status: ✓ Test Mode (Local Adapter)")
+        IO.puts("  Mode: Emails captured locally - no real sending")
+        IO.puts("  From: #{status.from_name} <#{status.from_email}>")
+        IO.puts("  Daily Limit: #{status.daily_limit}")
+        IO.puts("\n  ℹ️  To send real emails, configure SendGrid:")
+        IO.puts("    SENDGRID_API_KEY=your-api-key")
+        IO.puts("    SENDGRID_FROM_EMAIL=sender@yourdomain.com")
+        IO.puts("    SENDGRID_FROM_NAME=\"Your Name\"")
+
+      status.configured ->
+        IO.puts("  Status: ✓ SendGrid Configured")
+        IO.puts("  From: #{status.from_name} <#{status.from_email}>")
+        IO.puts("  Daily Limit: #{status.daily_limit}")
+        IO.puts("  API Key: ✓ Set")
+
+      true ->
+        IO.puts("  Status: ✗ Not configured")
+        IO.puts("\n  To configure SendGrid, set environment variables:")
+        IO.puts("    SENDGRID_API_KEY=your-api-key")
+        IO.puts("    SENDGRID_FROM_EMAIL=sender@yourdomain.com")
+        IO.puts("    SENDGRID_FROM_NAME=\"Your Name\"")
+        IO.puts("\n  Add these to ~/.marketing_agent/.env")
     end
   end
 
