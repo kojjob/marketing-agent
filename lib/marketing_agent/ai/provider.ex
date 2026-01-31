@@ -200,12 +200,12 @@ defmodule MarketingAgent.AI.Provider do
       },
       "gemini" => %{
         base_url: "https://generativelanguage.googleapis.com/v1beta",
-        default_model: "gemini-1.5-flash",
+        default_model: "gemini-2.0-flash",
         env_key: "GEMINI_API_KEY"
       },
       "google" => %{
         base_url: "https://generativelanguage.googleapis.com/v1beta",
-        default_model: "gemini-1.5-flash",
+        default_model: "gemini-2.0-flash",
         env_key: "GOOGLE_API_KEY"
       }
     }

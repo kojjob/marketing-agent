@@ -17,7 +17,7 @@ defmodule MarketingAgent.AI.Gemini do
 
   @behaviour MarketingAgent.AI.Provider
 
-  @default_model "gemini-1.5-flash"
+  @default_model "gemini-2.0-flash"
 
   @impl true
   def name, do: "Gemini"
@@ -45,11 +45,19 @@ defmodule MarketingAgent.AI.Gemini do
     # Convert messages to Gemini format
     {system_instruction, contents} = prepare_contents(messages, system_prompt)
 
+    # For Gemini 2.5 models with thinking, we need more output tokens
+    # since thinking consumes tokens from the budget
+    adjusted_max_tokens = if String.contains?(model, "2.5") do
+      max(max_tokens * 3, 2048)
+    else
+      max_tokens
+    end
+
     body = %{
       contents: contents,
       generationConfig: %{
         temperature: temperature,
-        maxOutputTokens: max_tokens
+        maxOutputTokens: adjusted_max_tokens
       }
     }
 
