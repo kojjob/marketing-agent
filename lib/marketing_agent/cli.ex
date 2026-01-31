@@ -454,9 +454,11 @@ defmodule MarketingAgent.CLI do
 
     IO.puts("\n=== Batch Email Send ===\n")
 
-    unless SendGrid.configured?() do
+    # Dry-run doesn't need SendGrid configured, but actual sending does
+    if !SendGrid.configured?() && !dry_run do
       IO.puts("  ✗ SendGrid not configured")
       IO.puts("  Run: email-status for setup instructions")
+      IO.puts("\n  Tip: Use --dry-run to test without SendGrid configuration")
     else
       # Count eligible contacts
       contacts = get_batch_contacts_preview(segment, limit)
